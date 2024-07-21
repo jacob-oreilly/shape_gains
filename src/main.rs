@@ -48,6 +48,8 @@ fn setup_camera(
 mod splash {
     use bevy::prelude::*;
 
+    use crate::TEXT_COLOR;
+
     use super::{despawn_screen, GameState};
 
     pub fn splash_plugin(app: &mut App) {
@@ -83,18 +85,23 @@ mod splash {
                 OnSplashScreen,
             ))
             .with_children(|parent| {
-                parent.spawn(ImageBundle {
-                    style: Style {
-                        // This will set the logo to be 200px wide, and auto adjust its height
-                        width: Val::Px(200.0),
+                parent.spawn(
+                    TextBundle::from_section(
+                        "Boss Shapes",
+                        TextStyle {
+                            font_size: 200.0,
+                            color: TEXT_COLOR,
+                            ..default()
+                        },
+                    )
+                    .with_style(Style {
+                        margin: UiRect::all(Val::Px(50.0)),
                         ..default()
-                    },
-                    // image: UiImage::new(icon),
-                    ..default()
-                });
+                    }),
+                );
             });
         // Insert the timer as a resource
-        commands.insert_resource(SplashTimer(Timer::from_seconds(1.0, TimerMode::Once)));
+        commands.insert_resource(SplashTimer(Timer::from_seconds(3.0, TimerMode::Once)));
     }
 
     // Tick the timer, and change state when finished
@@ -110,13 +117,20 @@ mod splash {
 }
 
 mod game {
-    use bevy::{color::palettes::css::{BLUE, LIME}, prelude::*, sprite::{MaterialMesh2dBundle, Mesh2dHandle}};
+    use bevy::{prelude::*, render::{mesh::{Indices, PrimitiveTopology}, render_asset::RenderAssetUsages}, sprite::{MaterialMesh2dBundle, Mesh2dHandle}, window::PrimaryWindow};
 
-    use super::{despawn_screen, DisplayQuality, GameState, Volume, TEXT_COLOR};
+    use super::{despawn_screen, GameState};
 
     #[derive(Component)]
     struct Enemy{
         rotation_speed: f32
+    }
+
+    #[derive(Component)]
+    struct Lasers {
+        point_a: Vec3,
+        point_b: Vec3,
+        ray_direction: Vec2
     }
 
     pub fn game_plugin(app: &mut App) {
@@ -129,104 +143,13 @@ mod game {
     #[derive(Component)]
     struct OnGameScreen;    
 
-    #[derive(Resource, Deref, DerefMut)]
-    struct GameTimer(Timer);
-
-    fn game_setup(
-        mut commands: Commands,
-        display_quality: Res<DisplayQuality>,
-        volume: Res<Volume>,  
-    ) {
-        commands.spawn((
-            NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    // center children
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Center,
-                    ..default()
-                },
-                ..default()
-            },
-            OnGameScreen
-        ))
-        .with_children(|parent| {
-            // First create a `NodeBundle` for centering what we want to display
-            parent
-                .spawn(NodeBundle {
-                    style: Style {
-                        // This will display its children in a column, from top to bottom
-                        flex_direction: FlexDirection::Column,
-                        // `align_items` will align children on the cross axis. Here the main axis is
-                        // vertical (column), so the cross axis is horizontal. This will center the
-                        // children
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    background_color: Color::BLACK.into(),
-                    ..default()
-                })
-                .with_children(|parent| {
-                    // Display two lines of text, the second one with the current settings
-                    parent.spawn(
-                        TextBundle::from_section(
-                            "Will be back to the menu shortly...",
-                            TextStyle {
-                                font_size: 80.0,
-                                color: TEXT_COLOR,
-                                ..default()
-                            },
-                        )
-                        .with_style(Style {
-                            margin: UiRect::all(Val::Px(50.0)),
-                            ..default()
-                        }),
-                    );
-                    parent.spawn(
-                        TextBundle::from_sections([
-                            TextSection::new(
-                                format!("quality: {:?}", *display_quality),
-                                TextStyle {
-                                    font_size: 60.0,
-                                    color: BLUE.into(),
-                                    ..default()
-                                },
-                            ),
-                            TextSection::new(
-                                " - ",
-                                TextStyle {
-                                    font_size: 60.0,
-                                    color: TEXT_COLOR,
-                                    ..default()
-                                },
-                            ),
-                            TextSection::new(
-                                format!("volume: {:?}", *volume),
-                                TextStyle {
-                                    font_size: 60.0,
-                                    color: LIME.into(),
-                                    ..default()
-                                },
-                            ),
-                        ])
-                        .with_style(Style {
-                            margin: UiRect::all(Val::Px(50.0)),
-                            ..default()
-                        }),
-                    );
-                });
-        });
-        // // Spawn a 5 seconds timer to trigger going back to the menu
-        // commands.insert_resource(GameTimer(Timer::from_seconds(5.0, TimerMode::Once)));
-    }
-
     fn setup_enemy(
         mut commands: Commands,
         mut meshes: ResMut<Assets<Mesh>>,
         mut materials: ResMut<Assets<ColorMaterial>>,
-    
+        window_query: Query<&Window, With<PrimaryWindow>>, 
     ) {
+        let window = window_query.get_single().unwrap();
         commands.spawn((
             MaterialMesh2dBundle {
                 mesh: Mesh2dHandle(meshes.add(RegularPolygon::new(50.0, 6))),
@@ -238,7 +161,27 @@ mod game {
                 rotation_speed: 2.0,
             },
             OnGameScreen
-        ));
+        )).with_children(|parent| {
+            for _i in 0..1 {
+                let angle = 0.0;
+                parent.spawn((
+                    MaterialMesh2dBundle {
+                        mesh: bevy::sprite::Mesh2dHandle(meshes.add(generate_line_mesh(
+                            Vec3::new(0.0, 0.0, 0.0),
+                            Vec3::new(window.width(), 0.0, 0.0),
+                        ))),
+                        material: materials
+                            .add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.5))),
+                        ..default()
+                    },
+                    Lasers {
+                        point_a: Vec3::new(25.0, 0.0, 0.0),
+                        point_b: Vec3::new(window.width(), angle, 0.0),
+                        ray_direction: Vec2::from_angle(angle.to_radians()),
+                    },
+                ));
+            }
+        });
     }
     
     fn update_enemy(
@@ -247,7 +190,6 @@ mod game {
     ) {
         if let Ok((mut transform, enemy)) = enemy_query.get_single_mut() {
             transform.rotate_z(enemy.rotation_speed * time.delta_seconds());
-            println!("rotating");
         }
         
     }
@@ -257,23 +199,19 @@ mod game {
         mut game_state: ResMut<NextState<GameState>>,
         keys: Res<ButtonInput<KeyCode>>,
     ) {
-        // if timer.tick(time.delta()).finished() {
-        //     game_state.set(GameState::Menu);
-        // }
-
         if keys.just_pressed(KeyCode::Escape) {
             game_state.set(GameState::Menu);
-            println!("stop");
         }
-        
     }
 
-    // fn ResumeGame(
-    //     mut game_state: ResMut<NextState<GameState>>,
-    //     keys: Res<ButtonInput<KeyCode>>
-    // ) {
-
-    // }
+    pub fn generate_line_mesh(line_start: Vec3, line_end: Vec3) -> Mesh {
+        let mut mesh = Mesh::new(PrimitiveTopology::LineList, RenderAssetUsages::default());
+        let line_vector = vec![line_start, line_end];
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, line_vector);
+        let indices: Vec<u32> = vec![0, 1];
+        mesh.insert_indices(Indices::U32(indices));
+        mesh
+    }
 }
 
 mod menu {
